@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Indoor Map Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="workspace" aria-label="マップ編集画面">
+        <div class="workspace-heading">
+          <div>
+            <span class="eyebrow">INDOOR MAP LAB</span>
+            <h1>屋内マップ</h1>
+          </div>
+          <span class="save-indicator" id="saveStatus">自動保存</span>
+        </div>
+        <canvas id="mapCanvas" aria-label="屋内マップのキャンバス"></canvas>
+        <div class="canvas-hint" id="canvasHint">右の「部屋を追加」を選び、格子をクリック</div>
+        <div class="canvas-footer">
+          <span><i class="legend-swatch room"></i>部屋</span>
+          <span><i class="legend-swatch selected"></i>選択中</span>
+          <span><i class="legend-line"></i>コネクタ</span>
+        </div>
+      </section>
+
+      <aside class="sidebar" aria-label="編集メニュー">
+        <div class="sidebar-top">
+          <div class="sidebar-title-row">
+            <span class="eyebrow">TOOLS</span>
+          </div>
+          <h2>編集メニュー</h2>
+          <p class="sidebar-intro">部屋を置いて、線でつなぐ。<br />階を切り替えて全体像を考える。</p>
+        </div>
+
+        <div class="sidebar-scroll">
+          <section class="panel-section">
+            <h3><span class="section-number">01</span> 操作</h3>
+            <div class="tool-buttons" role="group" aria-label="操作モード">
+              <button class="tool-button active" data-mode="select" aria-pressed="true"><span class="tool-icon">↖</span>選択</button>
+              <button class="tool-button" data-mode="room" aria-pressed="false"><span class="tool-icon">▣</span>部屋を追加</button>
+              <button class="tool-button" data-mode="connector" aria-pressed="false"><span class="tool-icon">⌁</span>接続</button>
+            </div>
+            <p class="helper" id="modeHelp">部屋をドラッグして移動できます。線もクリックで選択できます。</p>
+          </section>
+
+          <section class="panel-section">
+            <h3><span class="section-number">02</span> 階層と表示</h3>
+            <div class="field-grid two">
+              <label class="field">階層数
+                <input id="floorCount" type="number" min="1" max="30" step="1" />
+              </label>
+              <label class="field">配置先の階
+                <select id="activeFloor"></select>
+              </label>
+            </div>
+            <div class="field-grid two">
+              <label class="field">表示する階
+                <select id="visibleFloor"></select>
+              </label>
+              <label class="field">視点
+                <select id="viewMode">
+                  <option value="iso">斜め</option>
+                  <option value="top">真上</option>
+                </select>
+              </label>
+            </div>
+            <button id="resetViewButton" class="secondary-button reset-view-button">視点を戻す</button>
+            <p class="helper" id="viewHelp">真上視点は特定階の表示中に使えます。</p>
+          </section>
+
+          <section class="panel-section">
+            <h3><span class="section-number">03</span> ボクセル格子</h3>
+            <div class="field-grid two">
+              <label class="field">横幅
+                <input id="gridWidth" type="number" min="4" max="30" step="1" />
+              </label>
+              <label class="field">奥行き
+                <input id="gridDepth" type="number" min="4" max="30" step="1" />
+              </label>
+            </div>
+            <p class="helper">1マス = 1×1ボクセル。隣接したセルは1つの部屋になり、既存のタイトルと説明を使います。</p>
+          </section>
+
+          <section class="panel-section property-section" id="propertySection">
+            <h3><span class="section-number">04</span> 選択中の要素</h3>
+            <div id="properties"></div>
+          </section>
+
+          <section class="panel-section data-section">
+            <h3><span class="section-number">05</span> データ</h3>
+            <div class="data-actions">
+              <button id="exportButton" class="secondary-button">JSONを書き出す</button>
+              <label class="secondary-button file-button">JSONを読み込む<input id="importInput" type="file" accept="application/json,.json" /></label>
+            </div>
+            <button id="clearButton" class="text-button">マップを空にする</button>
+          </section>
+        </div>
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      </aside>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
