@@ -41,6 +41,8 @@ h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 15px; color: #e5
 .tool-button { min-height: 61px; border: 1px solid #324860; border-radius: 9px; background: #18293c; color: #a9bfd6; font-size: 11px; font-weight: 700; }
 .tool-button.active { color: #e8f5ff; background: #234d70; border-color: #70bdf3; box-shadow: inset 0 0 0 1px #70bdf322; }
 .tool-button:hover { border-color: #75acd9; }
+.history-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 9px; }
+.history-actions .secondary-button:disabled { opacity: .43; cursor: default; }
 .tool-icon { display: block; margin-bottom: 3px; font-size: 20px; line-height: 22px; }
 .helper { color: #7f96af; font-size: 11px; line-height: 1.55; margin: 10px 0 0; }
 .field-grid { display: grid; gap: 10px; margin-top: 10px; }

@@ -42,6 +42,10 @@
               <button class="tool-button" data-mode="room" aria-pressed="false"><span class="tool-icon">▣</span>部屋を追加</button>
               <button class="tool-button" data-mode="connector" aria-pressed="false"><span class="tool-icon">⌁</span>接続</button>
             </div>
+            <div class="history-actions" role="group" aria-label="編集履歴">
+              <button id="undoButton" class="secondary-button" disabled title="Ctrl+Z">↶ 元に戻す</button>
+              <button id="redoButton" class="secondary-button" disabled title="Ctrl+Y / Ctrl+Shift+Z">↷ やり直す</button>
+            </div>
             <p class="helper" id="modeHelp">部屋をドラッグして移動できます。線もクリックで選択できます。</p>
           </section>
 
@@ -64,6 +68,11 @@
                   <option value="iso">斜め</option>
                   <option value="top">真上</option>
                 </select>
+              </label>
+            </div>
+            <div class="field-grid full">
+              <label class="field">強調する階（他階を半透明）
+                <select id="focusFloor"></select>
               </label>
             </div>
             <button id="resetViewButton" class="secondary-button reset-view-button">視点を戻す</button>

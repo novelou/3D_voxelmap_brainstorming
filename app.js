@@ -7,6 +7,8 @@
   const ISO_X = 31;
   const ISO_Y = 16;
   const TOP_UNIT = 46;
+  const HISTORY_LIMIT = 50;
+  const DIMMED_ALPHA = .22;
   const FLOOR_PITCH = 104;
   const ROOM_HEIGHT = 27;
   const ISO_X_SCALE = ISO_X * Math.SQRT2;
@@ -20,7 +22,10 @@
     floorCount: document.getElementById("floorCount"),
     activeFloor: document.getElementById("activeFloor"),
     visibleFloor: document.getElementById("visibleFloor"),
+    focusFloor: document.getElementById("focusFloor"),
     viewMode: document.getElementById("viewMode"),
+    undoButton: document.getElementById("undoButton"),
+    redoButton: document.getElementById("redoButton"),
     gridWidth: document.getElementById("gridWidth"),
     gridDepth: document.getElementById("gridDepth"),
     modeHelp: document.getElementById("modeHelp"),
@@ -34,6 +39,7 @@
   let mode = "select";
   let activeFloor = 1;
   let visibleFloor = "all";
+  let focusFloor = "none";
   let viewMode = "iso";
   let selected = null;
   let connectorStart = null;
@@ -45,6 +51,9 @@
   let toastTimer = 0;
   let cssWidth = 1;
   let cssHeight = 1;
+  const undoStack = [];
+  const redoStack = [];
+  let historyGroup = null;
 
   function isInteger(value, min, max) {
     return Number.isInteger(value) && value >= min && value <= max;
@@ -111,6 +120,53 @@
     } catch (error) {
       els.saveStatus.textContent = "保存不可・JSONを書き出してください";
     }
+  }
+
+  function snapshot() {
+    return { map: JSON.stringify(map), selected: selected ? { ...selected } : null };
+  }
+
+  function refreshHistoryButtons() {
+    els.undoButton.disabled = undoStack.length === 0;
+    els.redoButton.disabled = redoStack.length === 0;
+  }
+
+  function recordChange(group = null) {
+    if (group === null || historyGroup !== group) {
+      undoStack.push(snapshot());
+      if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    }
+    redoStack.length = 0;
+    historyGroup = group;
+    refreshHistoryButtons();
+  }
+
+  function restoreSnapshot(state) {
+    map = JSON.parse(state.map);
+    selected = state.selected;
+    if (selected && !(selected.type === "room" ? roomById(selected.id) : connectorById(selected.id))) selected = null;
+    connectorStart = null;
+    drag = null;
+    cameraDrag = null;
+    canvas.classList.remove("dragging", "orbiting");
+    historyGroup = null;
+    save();
+    refreshControls();
+    renderProperties();
+    draw();
+    refreshHistoryButtons();
+  }
+
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(snapshot());
+    restoreSnapshot(undoStack.pop());
+  }
+
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(snapshot());
+    restoreSnapshot(redoStack.pop());
   }
 
   function overlaps(a, b) {
@@ -223,15 +279,19 @@
     els.gridDepth.value = map.depth;
     if (activeFloor > map.floors) activeFloor = map.floors;
     if (visibleFloor !== "all" && Number(visibleFloor) > map.floors) visibleFloor = "all";
+    if (focusFloor !== "none" && Number(focusFloor) > map.floors) focusFloor = "none";
     els.activeFloor.innerHTML = Array.from({ length: map.floors }, (_, i) => `<option value="${i + 1}">${i + 1}階</option>`).join("");
     els.activeFloor.value = String(activeFloor);
     els.visibleFloor.innerHTML = `<option value="all">全て</option>` + Array.from({ length: map.floors }, (_, i) => `<option value="${i + 1}">${i + 1}階</option>`).join("");
     els.visibleFloor.value = String(visibleFloor);
+    els.focusFloor.innerHTML = `<option value="none">なし</option>` + Array.from({ length: map.floors }, (_, i) => `<option value="${i + 1}">${i + 1}階</option>`).join("");
+    els.focusFloor.value = focusFloor;
+    els.focusFloor.disabled = visibleFloor !== "all";
     if (visibleFloor === "all") viewMode = "iso";
     els.viewMode.value = viewMode;
     els.viewMode.disabled = visibleFloor === "all";
     els.viewHelp.textContent = visibleFloor === "all"
-      ? "右ドラッグで回転・角度調整。Shift+右ドラッグで移動、ホイールで拡大縮小。真上視点は特定階のみ。"
+      ? "右ドラッグで回転・角度調整。Shift+右ドラッグで移動、ホイールで拡大縮小。強調する階を選ぶと他階が半透明になります。真上視点は特定階のみ。"
       : viewMode === "top"
         ? "右ドラッグで移動、ホイールで拡大縮小できます。"
         : "右ドラッグで回転・角度調整。Shift+右ドラッグで移動、ホイールで拡大縮小。";
@@ -302,6 +362,8 @@
     const item = selected.type === "room" ? roomById(selected.id) : connectorById(selected.id);
     if (!item) return;
     if (field === "title" || field === "description") {
+      if (item[field] === target.value) return;
+      recordChange(target);
       item[field] = target.value;
       save(); draw();
       return;
@@ -317,6 +379,8 @@
         showToast("格子外または他の部屋と重なるため変更できません。");
         return;
       }
+      if (number === (field === "floor" ? item.floor : bounds[field])) return;
+      recordChange();
       item.floor = candidate.floor;
       item.cells = candidate.cells;
       absorbMovedRoom(item);
@@ -333,6 +397,7 @@
         showToast("接続元と接続先には別の部屋を選んでください。");
         return;
       }
+      recordChange();
       item[field] = target.value;
       renderProperties();
     }
@@ -350,6 +415,7 @@
 
   function deleteSelected() {
     if (!selected) return;
+    recordChange();
     if (selected.type === "room") {
       map.rooms = map.rooms.filter(room => room.id !== selected.id);
       map.connectors = map.connectors.filter(connector => connector.from !== selected.id && connector.to !== selected.id);
@@ -376,6 +442,7 @@
       return;
     }
     const neighbor = map.rooms.find(room => roomsTouch(candidate, room));
+    recordChange();
     let room;
     if (neighbor) {
       neighbor.cells.push(candidate.cells[0]);
@@ -401,6 +468,7 @@
       select("connector", existing.id);
       showToast("この部屋同士は接続済みです。");
     } else {
+      recordChange();
       const connector = { id: uid("c"), from: connectorStart, to: room.id, description: "", color: COLORS[0] };
       map.connectors.push(connector);
       save(); select("connector", connector.id);
@@ -560,13 +628,16 @@
     return [point(fromAnchor.x, fromAnchor.y, from.floor, fromZ), point(toAnchor.x, toAnchor.y, to.floor, toZ)];
   }
 
-  function drawConnectors() {
+  function drawConnectors(floor) {
     for (const connector of map.connectors) {
       if (!connectorVisible(connector)) continue;
+      const from = roomById(connector.from), to = roomById(connector.to);
+      if (Math.max(from.floor, to.floor) !== floor) continue;
       const points = connectorPoints(connector);
       if (!points) continue;
       const isSelected = selected?.type === "connector" && selected.id === connector.id;
       ctx.save();
+      if (visibleFloor === "all" && focusFloor !== "none" && (from.floor !== Number(focusFloor) || to.floor !== Number(focusFloor))) ctx.globalAlpha = DIMMED_ALPHA;
       ctx.lineCap = "round";
       line(points[0], points[1], "#0a1425dd", isSelected ? 10 : 6);
       if (isSelected) { ctx.shadowColor = connector.color; ctx.shadowBlur = 14; }
@@ -585,17 +656,23 @@
     view = makeView();
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     for (const floor of view.floors) {
+      ctx.save();
+      if (visibleFloor === "all" && focusFloor !== "none" && floor !== Number(focusFloor)) ctx.globalAlpha = DIMMED_ALPHA;
       drawFloor(floor);
       drawRooms(floor);
+      ctx.restore();
+      drawConnectors(floor);
     }
-    drawConnectors();
     if (connectorStart) {
       const room = roomById(connectorStart);
       if (room && roomVisible(room)) {
+        ctx.save();
+        if (visibleFloor === "all" && focusFloor !== "none" && room.floor !== Number(focusFloor)) ctx.globalAlpha = DIMMED_ALPHA;
         const center = roomCenter(room);
         const p = point(center.x, center.y, room.floor, 1.2);
         ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
         ctx.strokeStyle = "#f8d75a"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.restore();
       }
     }
   }
@@ -700,6 +777,7 @@
     const dx = Math.round(current.x - drag.start.x), dy = Math.round(current.y - drag.start.y);
     const candidate = { ...room, cells: drag.cells.map(cell => ({ x: cell.x + dx, y: cell.y + dy })) };
     if (canPlace(candidate, room.id) && candidate.cells.some((cell, i) => cell.x !== room.cells[i].x || cell.y !== room.cells[i].y)) {
+      if (!drag.moved) recordChange();
       room.cells = candidate.cells; drag.moved = true;
       renderProperties(); draw();
     }
@@ -730,6 +808,8 @@
   }, { passive: false });
 
   document.querySelectorAll(".tool-button").forEach(button => button.addEventListener("click", () => setMode(button.dataset.mode)));
+  els.undoButton.addEventListener("click", undo);
+  els.redoButton.addEventListener("click", redo);
   document.getElementById("resetViewButton").addEventListener("click", () => {
     camera.yaw = Math.PI / 4;
     camera.tilt = 1;
@@ -746,6 +826,8 @@
       showToast(`部屋があるため、${highest}階より少なくできません。`);
       return;
     }
+    if (count === map.floors) return;
+    recordChange();
     map.floors = count; save(); refreshControls(); renderProperties(); draw();
   });
   els.activeFloor.addEventListener("change", () => {
@@ -754,6 +836,7 @@
     refreshControls(); draw();
   });
   els.visibleFloor.addEventListener("change", () => { visibleFloor = els.visibleFloor.value; if (visibleFloor !== "all") activeFloor = Number(visibleFloor); if (visibleFloor === "all") viewMode = "iso"; refreshControls(); draw(); });
+  els.focusFloor.addEventListener("change", () => { focusFloor = els.focusFloor.value; if (focusFloor !== "none") activeFloor = Number(focusFloor); refreshControls(); draw(); });
   els.viewMode.addEventListener("change", () => { viewMode = els.viewMode.value; refreshControls(); draw(); });
   for (const [element, field] of [[els.gridWidth, "width"], [els.gridDepth, "depth"]]) {
     element.addEventListener("change", () => {
@@ -763,6 +846,8 @@
         showToast("部屋が格子外に出るため、このサイズに変更できません。");
         return;
       }
+      if (number === map[field]) return;
+      recordChange();
       map[field] = number; save(); renderProperties(); draw();
     });
   }
@@ -773,16 +858,29 @@
   properties.addEventListener("change", event => {
     if (event.target.dataset.field && !["title", "description"].includes(event.target.dataset.field)) updateProperty(event.target);
   });
+  properties.addEventListener("focusout", () => { historyGroup = null; });
   properties.addEventListener("click", event => {
     const color = event.target.closest("[data-color]");
     if (color && selected?.type === "connector") {
-      connectorById(selected.id).color = color.dataset.color;
+      const connector = connectorById(selected.id);
+      if (connector.color === color.dataset.color) return;
+      recordChange();
+      connector.color = color.dataset.color;
       save(); renderProperties(); draw();
     }
     if (event.target.closest('[data-action="delete"]')) deleteSelected();
   });
 
   document.addEventListener("keydown", event => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+      const key = event.key.toLowerCase();
+      if (key === "z" || key === "y") {
+        event.preventDefault();
+        if (key === "z" && !event.shiftKey) undo();
+        else redo();
+        return;
+      }
+    }
     const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
     if (typing) return;
     if (event.key === "Escape") { connectorStart = null; setMode("select"); }
@@ -802,6 +900,7 @@
     if (!file) return;
     try {
       const imported = validateMap(JSON.parse(await file.text()));
+      if (JSON.stringify(imported) !== JSON.stringify(map)) recordChange();
       map = imported; activeFloor = 1; visibleFloor = "all"; viewMode = "iso"; selected = null; connectorStart = null;
       save(); refreshControls(); renderProperties(); draw(); showToast("マップを読み込みました。");
     } catch (error) {
@@ -811,11 +910,13 @@
   });
   document.getElementById("clearButton").addEventListener("click", () => {
     if (!confirm("部屋とコネクタをすべて削除しますか？")) return;
+    if (map.rooms.length || map.connectors.length) recordChange();
     map.rooms = []; map.connectors = []; selected = null; connectorStart = null;
     save(); refreshControls(); renderProperties(); draw();
   });
 
   refreshControls();
+  refreshHistoryButtons();
   renderProperties();
   new ResizeObserver(resizeCanvas).observe(canvas);
   resizeCanvas();
